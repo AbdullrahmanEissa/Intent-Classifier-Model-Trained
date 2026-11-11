@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intent Classifier</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: #f4f6f8;
+      color: #1f2937;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #ffffff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      width: 100%;
+      max-width: 480px;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.5rem;
+    }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.75rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 1rem;
+      resize: vertical;
+      min-height: 90px;
+      margin-bottom: 1rem;
+    }
+    button {
+      width: 100%;
+      padding: 0.75rem;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #1d4ed8;
+    }
+    .result {
+      margin-top: 1.25rem;
+      padding: 1rem;
+      background-color: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      display: none;
+    }
+    .intent-badge {
+      display: inline-block;
+      background-color: #dbeafe;
+      color: #1e40af;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+    }
+    pre {
+      margin: 0.75rem 0 0;
+      font-size: 0.85rem;
+      color: #4b5563;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Intent Classifier</h1>
+    <textarea id="textInput" placeholder="Type a message (e.g., whatsapp, I want to cancel my subscription)..."></textarea>
+    <button id="predictBtn" onclick="predictIntent()">Classify Intent</button>
+
+    <div id="resultBox" class="result">
+      <div>Predicted Intent: <span id="intentValue" class="intent-badge"></span></div>
+      <pre id="rawOutput"></pre>
+    </div>
+  </div>
+
+  <script>
+    async function predictIntent() {
+      const text = document.getElementById("textInput").value.trim();
+      const resultBox = document.getElementById("resultBox");
+      const intentValue = document.getElementById("intentValue");
+      const rawOutput = document.getElementById("rawOutput");
+
+      if (!text) return;
+
+      try {
+        const response = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const data = await response.json();
+
+        intentValue.textContent = data.intent || "Unknown";
+        rawOutput.textContent = JSON.stringify(data, null, 2);
+        resultBox.style.display = "block";
+      } catch (err) {
+        intentValue.textContent = "Error";
+        rawOutput.textContent = err.message;
+        resultBox.style.display = "block";
+      }
+    }
+  </script>
+</body>
+</html>

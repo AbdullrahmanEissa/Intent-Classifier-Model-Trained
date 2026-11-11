@@ -20,7 +20,7 @@ This small project demonstrates:
     The API will be available at http://127.0.0.1:6000
 
 4. Example request:
-    curl -X POST http://127.0.0.1:6000/predict -H "Content-Type: application/json" -d '{"text":"I want to cancel my subscription"}'
+    curl -X POST http://localhost:6000/predict -H "Content-Type: application/json" -d '{"text":"whatsapp"}'
 
     Response:
     {
