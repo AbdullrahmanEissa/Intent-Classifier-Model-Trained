@@ -42,7 +42,7 @@ This guide outlines the complete infrastructure setup for deploying the Intent C
 |                    +-----------------------+                    |
 +-----------------------------------------------------------------+
 
-``
+```
 
 ---
 
