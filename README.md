@@ -289,5 +289,3 @@ aws ec2 describe-vpcs --filters "Name=cidr,Values=10.10.0.0/16" --region $AWS_RE
 ```
 
 ```
-
-```
