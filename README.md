@@ -1,13 +1,12 @@
-```markdown
-# نشر وإدارة نموذج تصنيف النوايا (Intent Classifier) على AWS
+# Deploy and Manage Intent Classifier Model on AWS
 
-يوضح هذا الدليل خطوات بناء البنية التحتية الكاملة لنشر نموذج التعلم الآلي باستخدام **Application Load Balancer (ALB)** و **Auto Scaling Group (ASG)** عبر **AWS Management Console**، بالإضافة إلى طرق حذف جميع الموارد سواء من خلال الواجهة الرسومية أو عبر **AWS CloudShell**.
+This guide outlines the complete infrastructure setup for deploying the Intent Classifier machine learning model using an **Application Load Balancer (ALB)** and an **Auto Scaling Group (ASG)** via the **AWS Management Console**, along with resource cleanup procedures using both the Console and **AWS CloudShell**.
 
 ---
 
-## المعمارية الهندسية (Architecture)
+## Architecture
 
-```text
+``
                         [ Users / Internet ]
                                  |
                                  v
@@ -43,52 +42,52 @@
 |                    +-----------------------+                    |
 +-----------------------------------------------------------------+
 
-```
+``
 
 ---
 
-## القسم الأول: إنشاء الموارد عبر AWS Management Console
+## Part 1: Resource Creation via AWS Management Console
 
-### 1. إعداد الشبكة (VPC Networking)
+### 1. Configure VPC Networking
 
-1. انتقل إلى خدمة **VPC** ثم اختر **Your VPCs** واضغط **Create VPC**:
+1. Navigate to the **VPC** service, select **Your VPCs**, and click **Create VPC**:
 * **Name tag:** `intent-vpc`
 * **IPv4 CIDR block:** `10.10.0.0/16`
 
 
-2. انتقل إلى **Subnets** واضغط **Create subnet** لإنشاء شبكتين عامتين في منطقتين مختلفتين:
-* الشبكة الأولى: الاسم `intent-public-subnet-1` | النطاق `10.10.1.0/24` | المنطقة `eu-north-1a`.
-* الشبكة الثانية: الاسم `intent-public-subnet-2` | النطاق `10.10.2.0/24` | المنطقة `eu-north-1b`.
-* من قائمة **Actions** لكل شبكة، اختر **Edit subnet settings** وفعّل خيار **Enable auto-assign public IPv4 address**.
+2. Navigate to **Subnets** and click **Create subnet** to create two public subnets across different Availability Zones:
+* **Subnet 1:** Name `intent-public-subnet-1` | CIDR `10.10.1.0/24` | AZ `eu-north-1a`
+* **Subnet 2:** Name `intent-public-subnet-2` | CIDR `10.10.2.0/24` | AZ `eu-north-1b`
+* Select each subnet, open **Actions -> Edit subnet settings**, and check **Enable auto-assign public IPv4 address**.
 
 
-3. انتقل إلى **Internet gateways** واضغط **Create internet gateway** باسم `intent-igw`، ثم اضغط **Attach to a VPC** واربطه بـ `intent-vpc`.
-4. انتقل إلى **Route tables** واضغط **Create route table** باسم `intent-public-rtb` داخل `intent-vpc`:
-* من تبويب **Routes** أضف مساراً جديداً: **Destination** `0.0.0.0/0` يشير إلى **Target** `intent-igw`.
-* من تبويب **Subnet associations** اربط الشبكتين `intent-public-subnet-1` و `intent-public-subnet-2`.
+3. Navigate to **Internet gateways**, click **Create internet gateway** named `intent-igw`, then click **Attach to a VPC** and attach it to `intent-vpc`.
+4. Navigate to **Route tables**, click **Create route table** named `intent-public-rtb` inside `intent-vpc`:
+* Under the **Routes** tab, add a route with **Destination** `0.0.0.0/0` pointing to **Target** `intent-igw`.
+* Under the **Subnet associations** tab, associate both `intent-public-subnet-1` and `intent-public-subnet-2`.
 
 
 
-### 2. إعداد جدار الحماية (Security Group)
+### 2. Configure Security Group
 
-1. انتقل إلى خدمة **EC2** ثم **Security Groups** واضغط **Create security group**:
+1. Navigate to **EC2 -> Security Groups** and click **Create security group**:
 * **Name:** `intent-sg` | **VPC:** `intent-vpc`
 
 
-2. أضف قاعدتين في **Inbound rules**:
-* **HTTP (Port 80)** من المصدر `0.0.0.0/0`
-* **SSH (Port 22)** من المصدر `0.0.0.0/0`
+2. Add two rules under **Inbound rules**:
+* **HTTP (Port 80)** from source `0.0.0.0/0`
+* **SSH (Port 22)** from source `0.0.0.0/0`
 
 
 
-### 3. إنشاء قالب التشغيل (Launch Template)
+### 3. Create Launch Template
 
-1. من قسم **Instances** اختر **Launch Templates** واضغط **Create launch template** باسم `mlops-template`.
-2. **AMI:** اختر **Ubuntu Server 24.04 LTS** أو **20.04 LTS**.
-3. **Instance type:** اختر `t3.micro` (أو الحجم المناسب للنموذج).
-4. **Key pair:** اختر مفتاح الدخول الخاص بك.
-5. **Network settings:** اترك **Subnet** على وضع عدم التحديد، واختر **Select existing security group** وحدد `intent-sg`.
-6. **Advanced details -> User data:** الصق سكربت التهيئة التالي لتثبيت التطبيق وتشغيل Gunicorn و Nginx تلقائياً:
+1. Under **Instances**, select **Launch Templates** and click **Create launch template** named `mlops-template`.
+2. **AMI:** Select **Ubuntu Server 24.04 LTS** or **20.04 LTS**.
+3. **Instance type:** Select `t3.micro` (or an instance size suited for your model).
+4. **Key pair:** Select your SSH key pair.
+5. **Network settings:** Leave **Subnet** unselected, choose **Select existing security group**, and pick `intent-sg`.
+6. **Advanced details -> User data:** Paste the following bootstrap script to automatically install dependencies and start Gunicorn and Nginx:
 
 ```bash
 #!/bin/bash
@@ -168,68 +167,68 @@ systemctl restart nginx
 
 ```
 
-### 4. إنشاء Target Group و Application Load Balancer
+### 4. Create Target Group and Application Load Balancer
 
-1. من قسم **Load Balancing** اختر **Target Groups** واضغط **Create target group**:
+1. Under **Load Balancing**, select **Target Groups** and click **Create target group**:
 * **Target type:** `Instances` | **Name:** `mlops-target-group` | **Protocol/Port:** `HTTP : 80` | **VPC:** `intent-vpc`
-* **Health check path:** `/health` (مع التأكد أن كود النجاح `200`).
+* **Health check path:** `/health` (ensure success code is `200`).
 
 
-2. انتقل إلى **Load Balancers** واضغط **Create load balancer** من نوع **Application Load Balancer**:
+2. Navigate to **Load Balancers** and click **Create load balancer** (**Application Load Balancer**):
 * **Name:** `model-deployment` | **Scheme:** `Internet-facing`
-* **Network mapping:** اختر `intent-vpc` وحدد الشبكتين `intent-public-subnet-1` و `intent-public-subnet-2`.
-* **Security groups:** اختر `intent-sg`.
-* **Listeners and routing:** وجّه منفذ `HTTP : 80` إلى `mlops-target-group`.
+* **Network mapping:** Select `intent-vpc` and enable both `intent-public-subnet-1` and `intent-public-subnet-2`.
+* **Security groups:** Select `intent-sg`.
+* **Listeners and routing:** Forward `HTTP : 80` to `mlops-target-group`.
 
 
 
-### 5. إنشاء Auto Scaling Group (ASG)
+### 5. Create Auto Scaling Group (ASG)
 
-1. من قسم **Auto Scaling** اختر **Auto Scaling Groups** واضغط **Create Auto Scaling group**:
+1. Under **Auto Scaling**, select **Auto Scaling Groups** and click **Create Auto Scaling group**:
 * **Name:** `mlops-autoscaling` | **Launch template:** `mlops-template`.
-* **Network:** اختر `intent-vpc` وحدد الشبكتين الفرعيتين.
-* **Load balancing:** اختر **Attach to an existing load balancer** وحدد `mlops-target-group`، مع تفعيل **ELB health checks**.
-* **Group size:** حدد `Desired: 1`، `Min: 1`، `Max: 3`.
+* **Network:** Select `intent-vpc` and both public subnets.
+* **Load balancing:** Select **Attach to an existing load balancer**, choose `mlops-target-group`, and enable **ELB health checks**.
+* **Group size:** Set `Desired: 1`, `Min: 1`, `Max: 3`.
 
 
-2. بعد اكتمال التشغيل وظهور حالة السيرفر **Healthy** داخل **Target Group**، افتح رابط **DNS name** الخاص بالـ ALB في المتصفح.
-
----
-
-## القسم الثاني: حذف الموارد عبر AWS Management Console
-
-يجب الالتزام بالترتيب العكسي التالي لتجنب أخطاء ارتباط الموارد:
-
-1. **حذف Auto Scaling Group:**
-* انتقل إلى **EC2 -> Auto Scaling Groups**، حدد `mlops-autoscaling`، ومن قائمة **Actions** اختر **Delete** واكتب `delete` للتأكيد. انتظر حتى تصبح حالة السيرفرات في **Instances** هي **Terminated**.
-
-
-2. **حذف Load Balancer:**
-* انتقل إلى **EC2 -> Load Balancers**، حدد `model-deployment`، ومن قائمة **Actions** اختر **Delete load balancer**.
-
-
-3. **حذف Target Group:**
-* انتقل إلى **EC2 -> Target Groups**، حدد `mlops-target-group`، ومن قائمة **Actions** اختر **Delete**.
-
-
-4. **حذف Launch Template:**
-* انتقل إلى **EC2 -> Launch Templates**، حدد `mlops-template`، ومن قائمة **Actions** اختر **Delete template**.
-
-
-5. **حذف Security Group:**
-* انتقل إلى **EC2 -> Security Groups**، حدد `intent-sg`، ومن قائمة **Actions** اختر **Delete security groups** (تأكد من إغلاق كافة السيرفرات وحذف الـ ALB أولاً).
-
-
-6. **حذف الشبكة (VPC):**
-* انتقل إلى **VPC -> Your VPCs**، حدد `intent-vpc`، ومن قائمة **Actions** اختر **Delete VPC**. سيقوم النظام تلقائياً بحذف الـ **Subnets**، و **Route Table**، وفصل وحذف **Internet Gateway** دفعة واحدة.
-
-
+2. Once the instance status turns **Healthy** inside the **Target Group**, open the ALB **DNS name** in your browser.
 
 ---
 
-## القسم الثالث: حذف الموارد عبر AWS CloudShell
+## Part 2: Resource Deletion via AWS Management Console
 
-افتح **AWS CloudShell** من الشريط العلوي للكونسول ونفّذ الأوامر التالية بالترتيب:
+Delete resources in the following reverse order to prevent dependency errors:
+
+1. **Delete Auto Scaling Group:**
+* Go to **EC2 -> Auto Scaling Groups**, select `mlops-autoscaling`, click **Actions -> Delete**, and confirm. Wait until all instances under **Instances** reach the **Terminated** state.
+
+
+2. **Delete Load Balancer:**
+* Go to **EC2 -> Load Balancers**, select `model-deployment`, and click **Actions -> Delete load balancer**.
+
+
+3. **Delete Target Group:**
+* Go to **EC2 -> Target Groups**, select `mlops-target-group`, and click **Actions -> Delete**.
+
+
+4. **Delete Launch Template:**
+* Go to **EC2 -> Launch Templates**, select `mlops-template`, and click **Actions -> Delete template**.
+
+
+5. **Delete Security Group:**
+* Go to **EC2 -> Security Groups**, select `intent-sg`, and click **Actions -> Delete security groups** (ensure all EC2 instances and the ALB are completely removed first).
+
+
+6. **Delete VPC:**
+* Go to **VPC -> Your VPCs**, select `intent-vpc`, and click **Actions -> Delete VPC**. AWS will automatically delete associated **Subnets**, **Route Tables**, and detach/delete the **Internet Gateway** in one step.
+
+
+
+---
+
+## Part 3: Resource Deletion via AWS CloudShell
+
+Open **AWS CloudShell** from the top navigation bar and run the following commands sequentially:
 
 ```bash
 export AWS_REGION="eu-north-1"
@@ -252,7 +251,7 @@ aws ec2 delete-launch-template \
 
 ```
 
-انتظر حوالي دقيقة واحدة حتى يتم إنهاء جميع السيرفرات وتحرير كروت الشبكة، ثم نفّذ أوامر حذف جدار الحماية والشبكة:
+Wait approximately one minute for all EC2 instances to terminate and network interfaces to release, then delete the Security Group and VPC networking components:
 
 ```bash
 SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=intent-sg" --query 'SecurityGroups[0].GroupId' --output text --region $AWS_REGION)
@@ -276,7 +275,7 @@ aws ec2 delete-vpc --vpc-id "$VPC_ID" --region $AWS_REGION
 
 ```
 
-للتحقق النهائي من نظافة الحساب وعدم وجود أي موارد نشطة:
+Verify that no active resources remain in the region:
 
 ```bash
 aws ec2 describe-instances --filters "Name=instance-state-name,Values=running,pending,shutting-down" --query 'Reservations[*].Instances[*].InstanceId' --region $AWS_REGION
