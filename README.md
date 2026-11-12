@@ -6,7 +6,7 @@ This guide outlines the complete infrastructure setup for deploying the Intent C
 
 ## Architecture
 
-``
+```text
                         [ Users / Internet ]
                                  |
                                  v
