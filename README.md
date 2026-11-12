@@ -1,5 +1,9 @@
 # Deploy and Manage Intent Classifier Model on AWS
-
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-25-46" src="https://github.com/user-attachments/assets/9e8edcc4-1d0d-45ff-9407-ac63dd1081de" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-25-51" src="https://github.com/user-attachments/assets/f98c93d7-de7b-41e4-b1d3-f75ac4393e5c" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-25-57" src="https://github.com/user-attachments/assets/7ab8d324-a0e5-4347-b901-2c108e32d482" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-26-22" src="https://github.com/user-attachments/assets/fb026dd7-af03-4733-8c23-4f2a9a6286b3" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-26-49" src="https://github.com/user-attachments/assets/111fdd6a-5403-4314-8208-43541fde924a" />
 This guide outlines the complete infrastructure setup for deploying the Intent Classifier machine learning model using an **Application Load Balancer (ALB)** and an **Auto Scaling Group (ASG)** via the **AWS Management Console**, along with resource cleanup procedures using both the Console and **AWS CloudShell**.
 
 ---
