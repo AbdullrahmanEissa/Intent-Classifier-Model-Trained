@@ -18,6 +18,6 @@ COPY model ./model
 RUN chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 80
+EXPOSE 6000
 
 CMD ["gunicorn", "--bind", "0.0.0.0:6000", "app:app"]
