@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intent-app
+  namespace: intent-classifier
+  labels:
+    app: intent-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: intent-app
+  template:
+    metadata:
+      labels:
+        app: intent-app
+    spec:
+      containers:
+        - name: intent-app
+          image: abdueissa/intent-classifier-model:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 6000
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 6000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 6000
+            initialDelaySeconds: 15
+            periodSeconds: 20
