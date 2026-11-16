@@ -29,6 +29,11 @@ eksctl create cluster \
   --nodes-min 1 \
   --nodes-max 3 \
   --managed
+
+or Just 
+
+eksctl create cluster --name intent-classifier-model --region eu-north-1 --managed
+
 ```
 
 ## 3. Deploy Manifests via CloudShell
