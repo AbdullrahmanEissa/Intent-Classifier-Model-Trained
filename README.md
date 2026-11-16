@@ -13,6 +13,7 @@ docker push abdueissa/intent-classifier-model:latest
 1. Open **Amazon EKS Console** (`eu-north-1`) > **Add cluster** > **Create**.
 2. Keep **Quick configuration (EKS Auto Mode)**, name it `intent-classifier-model`, and click **Create**.
 3. Wait until status is **Active**, then connect CloudShell:
+4. Subnet Tagging Neeeded
 ```bash
 aws eks update-kubeconfig --region eu-north-1 --name intent-classifier-model
 ```
