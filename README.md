@@ -20,7 +20,7 @@ aws eks update-kubeconfig --region eu-north-1 --name intent-classifier-model
 
 ### Option B: AWS CloudShell
 ```bash
-eksctl create cluster \
+nohup eksctl create cluster \
   --name intent-classifier-model \
   --region eu-north-1 \
   --version 1.32 \
@@ -29,11 +29,11 @@ eksctl create cluster \
   --nodes 2 \
   --nodes-min 1 \
   --nodes-max 3 \
-  --managed
+  --managed > eks.log 2>&1 &
 
 or Just 
 
-eksctl create cluster --name intent-classifier-model --region eu-north-1 --managed
+nohub eksctl create cluster --name intent-classifier-model --region eu-north-1 --managed
 
 ```
 
