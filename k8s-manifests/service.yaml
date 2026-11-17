@@ -4,7 +4,7 @@ metadata:
   name: intent-app-service
   namespace: intent-classifier
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
     app: intent-app
   ports:
