@@ -8,7 +8,21 @@ docker push abdueissa/intent-classifier-model:latest
 ```
 
 ## 2. Create Amazon EKS Cluster
+## 2.1 INSTALL EKSCTL
+```bash
+# for ARM systems, set ARCH to: `arm64`
+ARCH=amd64
+PLATFORM=$(uname -s)_$ARCH
 
+curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
+
+# (Optional) Verify checksum
+curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_checksums.txt" | grep $PLATFORM | sha256sum --check
+
+tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp && rm eksctl_$PLATFORM.tar.gz
+
+sudo install -m 0755 /tmp/eksctl /usr/local/bin && rm /tmp/eksctl
+```
 ### Option A: AWS Console
 1. Open **Amazon EKS Console** (`eu-north-1`) > **Add cluster** > **Create**.
 2. Keep **Quick configuration (EKS Auto Mode)**, name it `intent-classifier-v2`, and click **Create**.
