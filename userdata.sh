@@ -16,7 +16,7 @@ apt-get update -y
 apt-get install -y git python3 python3-venv python3-pip nginx
 
 APP_DIR="/opt/intent-app"
-REPO_URL="https://github.com"
+REPO_URL="https://github.com/AbdullrahmanEissa/Intent-Classifier-Model-Trained.git"
 
 rm -rf "$APP_DIR"
 git clone "$REPO_URL" "$APP_DIR"
