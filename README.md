@@ -95,30 +95,35 @@ This guide outlines the complete infrastructure setup for deploying the Intent C
 
 ```bash
 #!/bin/bash
-set -e
+set -euxo pipefail
 
-fallocate -l 2G /swapfile
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
+exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+export DEBIAN_FRONTEND=noninteractive
 
-APP_DIR="/opt/intent-app"
-REPO_URL="[https://github.com/AbdullrahmanEissa/Intent-Classifier-Model-Trained](https://github.com/AbdullrahmanEissa/Intent-Classifier-Model-Trained)"
+if [ ! -f /swapfile ]; then
+    dd if=/dev/zero of=/swapfile bs=128M count=16
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
 
 apt-get update -y
 apt-get install -y git python3 python3-venv python3-pip nginx
 
-mkdir -p "$APP_DIR"
+APP_DIR="/opt/intent-app"
+REPO_URL="https://github.com/AbdullrahmanEissa/Intent-Classifier-Model-Trained.git"
+
+rm -rf "$APP_DIR"
 git clone "$REPO_URL" "$APP_DIR"
 cd "$APP_DIR"
 
 python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements.txt
 
 if [ ! -f "$APP_DIR/model/artifacts/intent_model.pkl" ]; then
-    python3 model/train.py
+    .venv/bin/python3 model/train.py
 fi
 
 chown -R ubuntu:ubuntu "$APP_DIR"
@@ -148,7 +153,7 @@ server {
     server_name _;
 
     location / {
-        proxy_pass [http://127.0.0.1:6000](http://127.0.0.1:6000);
+        proxy_pass http://127.0.0.1:6000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -164,10 +169,10 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 
 systemctl daemon-reload
-systemctl enable intent_gunicorn
-systemctl start intent_gunicorn
-systemctl enable nginx
+systemctl enable --now intent_gunicorn
+systemctl enable --now nginx
 systemctl restart nginx
+
 
 ```
 
