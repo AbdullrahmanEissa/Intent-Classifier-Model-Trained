@@ -1,151 +1,293 @@
-# Intent Classifier Model — Amazon EKS + AWS ALB Ingress Deployment
+# Deploy and Manage Intent Classifier Model on AWS
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-25-46" src="https://github.com/user-attachments/assets/9e8edcc4-1d0d-45ff-9407-ac63dd1081de" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-25-51" src="https://github.com/user-attachments/assets/f98c93d7-de7b-41e4-b1d3-f75ac4393e5c" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-25-57" src="https://github.com/user-attachments/assets/7ab8d324-a0e5-4347-b901-2c108e32d482" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-26-22" src="https://github.com/user-attachments/assets/fb026dd7-af03-4733-8c23-4f2a9a6286b3" />
+<img width="1920" height="1080" alt="Screenshot from 2026-11-12 20-26-49" src="https://github.com/user-attachments/assets/111fdd6a-5403-4314-8208-43541fde924a" />
+This guide outlines the complete infrastructure setup for deploying the Intent Classifier machine learning model using an **Application Load Balancer (ALB)** and an **Auto Scaling Group (ASG)** via the **AWS Management Console**, along with resource cleanup procedures using both the Console and **AWS CloudShell**.
 
-## 1. Build & Push Docker Image
-```bash
-docker build -t abdueissa/intent-classifier-model:latest .
-docker login
-docker push abdueissa/intent-classifier-model:latest
+---
+
+## Architecture
+
+```text
+                        [ Users / Internet ]
+                                 |
+                                 v
+                     +-----------------------+
+                     |   Internet Gateway    |
+                     +-----------------------+
+                                 |
++--------------------------------|--------------------------------+
+|  VPC (10.10.0.0/16)            v                                |
+|                    +-----------------------+                    |
+|                    | Application Load      |                    |
+|                    | Balancer (ALB)        |                    |
+|                    +-----------------------+                    |
+|                       /                 \                       |
+|                      /                   \                      |
+|                     v                     v                     |
+|   +-------------------------+     +-------------------------+   |
+|   | Availability Zone A     |     | Availability Zone B     |   |
+|   | +---------------------+ |     | +---------------------+ |   |
+|   | | Public Subnet 1     | |     | | Public Subnet 2     | |   |
+|   | |                     | |     | |                     | |   |
+|   | |  +---------------+  | |     | |  +---------------+  | |   |
+|   | |  | EC2 Instance  |  | |     | |  | EC2 Instance  |  | |   |
+|   | |  | (Intent Model)|  | |     | |  | (Intent Model)|  | |   |
+|   | |  +---------------+  | |     | |  +---------------+  | |   |
+|   | +---------------------+ |     | +---------------------+ |   |
+|   +-------------------------+     +-------------------------+   |
+|                      \                   /                      |
+|                       \                 /                       |
+|                    +-----------------------+                    |
+|                    | Auto Scaling Group &  |                    |
+|                    | Target Group          |                    |
+|                    +-----------------------+                    |
++-----------------------------------------------------------------+
+
 ```
 
-## 2. Create Amazon EKS Cluster
-## 2.1 INSTALL EKSCTL
-```bash
-# for ARM systems, set ARCH to: `arm64`
-ARCH=amd64
-PLATFORM=$(uname -s)_$ARCH
+---
 
-curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
+## Part 1: Resource Creation via AWS Management Console
 
-# (Optional) Verify checksum
-curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_checksums.txt" | grep $PLATFORM | sha256sum --check
+### 1. Configure VPC Networking
 
-tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp && rm eksctl_$PLATFORM.tar.gz
+1. Navigate to the **VPC** service, select **Your VPCs**, and click **Create VPC**:
+* **Name tag:** `intent-vpc`
+* **IPv4 CIDR block:** `10.10.0.0/16`
 
-sudo install -m 0755 /tmp/eksctl /usr/local/bin && rm /tmp/eksctl
-```
-### Option A: AWS Console
-1. Open **Amazon EKS Console** (`eu-north-1`) > **Add cluster** > **Create**.
-2. Keep **Quick configuration (EKS Auto Mode)**, name it `intent-classifier-v2`, and click **Create**.
-3. Tag your default VPC subnets with `kubernetes.io/role/elb=1`:
-```bash
-VPC_ID=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query "Vpcs[0].VpcId" --output text --region eu-north-1)
-SUBNET_IDS=$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$VPC_ID --query "Subnets[*].SubnetId" --output text --region eu-north-1)
-aws ec2 create-tags --resources $SUBNET_IDS --tags Key=kubernetes.io/role/elb,Value=1 --region eu-north-1
-aws eks update-kubeconfig --region eu-north-1 --name intent-classifier-v2
-```
 
-### Option B: AWS CloudShell (`nohup` Background Execution)
-```bash
-nohup eksctl create cluster \
-  --name intent-classifier-v2 \
-  --region eu-north-1 \
-  --version 1.32 \
-  --nodegroup-name standard-workers \
-  --node-type t3.micro \
-  --nodes 4 \
-  --nodes-min 2 \
-  --nodes-max 5 \
-  --managed > eks.log 2>&1 &
+2. Navigate to **Subnets** and click **Create subnet** to create two public subnets across different Availability Zones:
+* **Subnet 1:** Name `intent-public-subnet-1` | CIDR `10.10.1.0/24` | AZ `eu-north-1a`
+* **Subnet 2:** Name `intent-public-subnet-2` | CIDR `10.10.2.0/24` | AZ `eu-north-1b`
+* Select each subnet, open **Actions -> Edit subnet settings**, and check **Enable auto-assign public IPv4 address**.
 
-tail -f eks.log
-```
 
-## 3. Attach ALB Permissions & Install Helm + AWS Load Balancer Controller
+3. Navigate to **Internet gateways**, click **Create internet gateway** named `intent-igw`, then click **Attach to a VPC** and attach it to `intent-vpc`.
+4. Navigate to **Route tables**, click **Create route table** named `intent-public-rtb` inside `intent-vpc`:
+* Under the **Routes** tab, add a route with **Destination** `0.0.0.0/0` pointing to **Target** `intent-igw`.
+* Under the **Subnet associations** tab, associate both `intent-public-subnet-1` and `intent-public-subnet-2`.
 
-### Step 3.1: Attach IAM Policy to Worker Node Role
-```bash
-NODE_ROLE=$(aws eks describe-nodegroup \
-  --cluster-name intent-classifier-v2 \
-  --nodegroup-name standard-workers \
-  --region eu-north-1 \
-  --query "nodegroup.nodeRole" \
-  --output text | awk -F'/' '{print $NF}')
 
-POLICY_URL=$(printf "https://%s.%s/%s/%s/%s/%s/%s/%s" \
-  "raw" "githubusercontent.com" \
-  "kubernetes-sigs" "aws-load-balancer-controller" "v2.11.0" \
-  "docs" "install" "iam_policy.json")
 
-curl -sL "$POLICY_URL" -o iam_policy.json
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+### 2. Configure Security Group
 
-aws iam create-policy \
-  --policy-name AWSLoadBalancerControllerIAMPolicy \
-  --policy-document file://iam_policy.json 2>/dev/null || true
+1. Navigate to **EC2 -> Security Groups** and click **Create security group**:
+* **Name:** `intent-sg` | **VPC:** `intent-vpc`
 
-aws iam attach-role-policy \
-  --role-name "$NODE_ROLE" \
-  --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy"
-```
 
-### Step 3.2: Install Helm & Deploy ALB Controller
-```bash
-mkdir -p ~/bin && curl -sL "$(printf 'https://%s.%s/%s' 'get' 'helm.sh' 'helm-v3.16.3-linux-amd64.tar.gz')" | tar -xz -C ~/bin --strip-components=1 linux-amd64/helm && export PATH="$HOME/bin:$PATH"
-```
+2. Add two rules under **Inbound rules**:
+* **HTTP (Port 80)** from source `0.0.0.0/0`
+* **SSH (Port 22)** from source `0.0.0.0/0`
+
+
+
+### 3. Create Launch Template
+
+1. Under **Instances**, select **Launch Templates** and click **Create launch template** named `mlops-template`.
+2. **AMI:** Select **Ubuntu Server 24.04 LTS** or **20.04 LTS**.
+3. **Instance type:** Select `t3.micro` (or an instance size suited for your model).
+4. **Key pair:** Select your SSH key pair.
+5. **Network settings:** Leave **Subnet** unselected, choose **Select existing security group**, and pick `intent-sg`.
+6. **Advanced details -> User data:** Paste the following bootstrap script to automatically install dependencies and start Gunicorn and Nginx:
 
 ```bash
-helm repo add eks "$(printf 'https://%s.%s/%s' 'aws' 'github.io' 'eks-charts')" && helm repo update eks
+#!/bin/bash
+set -e
+
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+
+APP_DIR="/opt/intent-app"
+REPO_URL="[https://github.com/AbdullrahmanEissa/Intent-Classifier-Model-Trained](https://github.com/AbdullrahmanEissa/Intent-Classifier-Model-Trained)"
+
+apt-get update -y
+apt-get install -y git python3 python3-venv python3-pip nginx
+
+mkdir -p "$APP_DIR"
+git clone "$REPO_URL" "$APP_DIR"
+cd "$APP_DIR"
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+if [ ! -f "$APP_DIR/model/artifacts/intent_model.pkl" ]; then
+    python3 model/train.py
+fi
+
+chown -R ubuntu:ubuntu "$APP_DIR"
+
+cat > /etc/systemd/system/intent_gunicorn.service << 'EOF'
+[Unit]
+Description=Gunicorn instance for Intent Classifier
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/intent-app
+Environment="PATH=/opt/intent-app/.venv/bin"
+ExecStart=/opt/intent-app/.venv/bin/gunicorn --workers 2 --bind 127.0.0.1:6000 app:app
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/nginx/conf.d/intent_app.conf << 'EOF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location / {
+        proxy_pass [http://127.0.0.1:6000](http://127.0.0.1:6000);
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 120s;
+    }
+}
+EOF
+
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+
+systemctl daemon-reload
+systemctl enable intent_gunicorn
+systemctl start intent_gunicorn
+systemctl enable nginx
+systemctl restart nginx
+
 ```
+
+### 4. Create Target Group and Application Load Balancer
+
+1. Under **Load Balancing**, select **Target Groups** and click **Create target group**:
+* **Target type:** `Instances` | **Name:** `mlops-target-group` | **Protocol/Port:** `HTTP : 80` | **VPC:** `intent-vpc`
+* **Health check path:** `/health` (ensure success code is `200`).
+
+
+2. Navigate to **Load Balancers** and click **Create load balancer** (**Application Load Balancer**):
+* **Name:** `model-deployment` | **Scheme:** `Internet-facing`
+* **Network mapping:** Select `intent-vpc` and enable both `intent-public-subnet-1` and `intent-public-subnet-2`.
+* **Security groups:** Select `intent-sg`.
+* **Listeners and routing:** Forward `HTTP : 80` to `mlops-target-group`.
+
+
+
+### 5. Create Auto Scaling Group (ASG)
+
+1. Under **Auto Scaling**, select **Auto Scaling Groups** and click **Create Auto Scaling group**:
+* **Name:** `mlops-autoscaling` | **Launch template:** `mlops-template`.
+* **Network:** Select `intent-vpc` and both public subnets.
+* **Load balancing:** Select **Attach to an existing load balancer**, choose `mlops-target-group`, and enable **ELB health checks**.
+* **Group size:** Set `Desired: 1`, `Min: 1`, `Max: 3`.
+
+
+2. Once the instance status turns **Healthy** inside the **Target Group**, open the ALB **DNS name** in your browser.
+
+---
+
+## Part 2: Resource Deletion via AWS Management Console
+
+Delete resources in the following reverse order to prevent dependency errors:
+
+1. **Delete Auto Scaling Group:**
+* Go to **EC2 -> Auto Scaling Groups**, select `mlops-autoscaling`, click **Actions -> Delete**, and confirm. Wait until all instances under **Instances** reach the **Terminated** state.
+
+
+2. **Delete Load Balancer:**
+* Go to **EC2 -> Load Balancers**, select `model-deployment`, and click **Actions -> Delete load balancer**.
+
+
+3. **Delete Target Group:**
+* Go to **EC2 -> Target Groups**, select `mlops-target-group`, and click **Actions -> Delete**.
+
+
+4. **Delete Launch Template:**
+* Go to **EC2 -> Launch Templates**, select `mlops-template`, and click **Actions -> Delete template**.
+
+
+5. **Delete Security Group:**
+* Go to **EC2 -> Security Groups**, select `intent-sg`, and click **Actions -> Delete security groups** (ensure all EC2 instances and the ALB are completely removed first).
+
+
+6. **Delete VPC:**
+* Go to **VPC -> Your VPCs**, select `intent-vpc`, and click **Actions -> Delete VPC**. AWS will automatically delete associated **Subnets**, **Route Tables**, and detach/delete the **Internet Gateway** in one step.
+
+
+
+---
+
+## Part 3: Resource Deletion via AWS CloudShell
+
+Open **AWS CloudShell** from the top navigation bar and run the following commands sequentially:
 
 ```bash
-VPC_ID=$(aws eks describe-cluster --name intent-classifier-v2 --region eu-north-1 --query "cluster.resourcesVpcConfig.vpcId" --output text) && helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system --set clusterName=intent-classifier-v2 --set region=eu-north-1 --set vpcId="$VPC_ID"
+export AWS_REGION="eu-north-1"
+
+aws autoscaling delete-auto-scaling-group \
+  --auto-scaling-group-name mlops-autoscaling \
+  --force-delete \
+  --region $AWS_REGION
+
+ALB_ARN=$(aws elbv2 describe-load-balancers --names model-deployment --query 'LoadBalancers[0].LoadBalancerArn' --output text --region$AWS_REGION)
+TG_ARN=$(aws elbv2 describe-target-groups --names mlops-target-group --query 'TargetGroups[0].TargetGroupArn' --output text --region$AWS_REGION)
+
+aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" --region $AWS_REGION
+sleep 15
+aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region $AWS_REGION
+
+aws ec2 delete-launch-template \
+  --launch-template-name mlops-template \
+  --region $AWS_REGION
+
 ```
+
+Wait approximately one minute for all EC2 instances to terminate and network interfaces to release, then delete the Security Group and VPC networking components:
 
 ```bash
-kubectl get deployment -n kube-system aws-load-balancer-controller -w
+SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=intent-sg" --query 'SecurityGroups[0].GroupId' --output text --region $AWS_REGION)
+aws ec2 delete-security-group --group-id "$SG_ID" --region $AWS_REGION
+
+VPC_ID=$(aws ec2 describe-vpcs --filters "Name=cidr,Values=10.10.0.0/16" --query 'Vpcs[0].VpcId' --output text --region $AWS_REGION)
+
+for subnet in $(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[*].SubnetId' --output text --region $AWS_REGION); do
+    aws ec2 delete-subnet --subnet-id "$subnet" --region $AWS_REGION
+done
+
+for rtb in $(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" --query 'RouteTables[?Associations[0].Main!=`true`].RouteTableId' --output text --region $AWS_REGION); do
+    aws ec2 delete-route-table --route-table-id "$rtb" --region $AWS_REGION
+done
+
+IGW_ID=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$VPC_ID" --query 'InternetGateways[0].InternetGatewayId' --output text --region $AWS_REGION)
+aws ec2 detach-internet-gateway --internet-gateway-id "$IGW_ID" --vpc-id "$VPC_ID" --region $AWS_REGION
+aws ec2 delete-internet-gateway --internet-gateway-id "$IGW_ID" --region $AWS_REGION
+
+aws ec2 delete-vpc --vpc-id "$VPC_ID" --region $AWS_REGION
+
 ```
 
-## 4. Deploy Manifests (`Users -> ALB Ingress -> NodePort Service -> Pods`)
+Verify that no active resources remain in the region:
+
 ```bash
-git clone -b Kubernetes https://github.com
-cd Intent-Classifier-Model-Trained/k8s-manifests
-kubectl apply -f namespace.yaml
-kubectl apply -f .
+aws ec2 describe-instances --filters "Name=instance-state-name,Values=running,pending,shutting-down" --query 'Reservations[*].Instances[*].InstanceId' --region $AWS_REGION
+aws elbv2 describe-load-balancers --query 'LoadBalancers[*].LoadBalancerName' --region $AWS_REGION
+aws ec2 describe-vpcs --filters "Name=cidr,Values=10.10.0.0/16" --region $AWS_REGION
+
 ```
 
-## 5. Serve & Test via ALB Ingress
-```bash
-kubectl get pods -n intent-classifier
-kubectl get ingress -n intent-classifier
 ```
 
-```bash
-ALB_HOST=$(kubectl get ingress intent-app-ingress -n intent-classifier -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-echo "Web UI: http://${ALB_HOST}"
-
-curl -X POST "http://${ALB_HOST}/predict" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "hello"}'
 ```
-
-## 6. Delete Cluster & Clean Up ALB
-
-### Option A: AWS CloudShell
-```bash
-kubectl delete namespace intent-classifier
-helm uninstall aws-load-balancer-controller -n kube-system
-nohup eksctl delete cluster --name intent-classifier-v2 --region eu-north-1 --disable-nodegroup-eviction > delete.log 2>&1 &
-tail -f delete.log
-```
-
-### Option B: AWS Console
-```bash
-kubectl delete namespace intent-classifier
-helm uninstall aws-load-balancer-controller -n kube-system
-```
-Then open **EKS Console** > **`intent-classifier-v2`** > **Delete**.
-
-### TO Install EKSCTL
-
-# for ARM systems, set ARCH to: `arm64`
-ARCH=amd64
-PLATFORM=$(uname -s)_$ARCH
-
-curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
-
-# (Optional) Verify checksum
-curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_checksums.txt" | grep $PLATFORM | sha256sum --check
-
-tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp && rm eksctl_$PLATFORM.tar.gz
-
-sudo install -m 0755 /tmp/eksctl /usr/local/bin && rm /tmp/eksctl
