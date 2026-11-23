@@ -52,8 +52,8 @@ kubectl cluster-info --context kind-kserve
 
 ### Step 2: Install `cert-manager`
 ```bash
-helm repo add jetstack https://jetstack.io --force-update
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.16.2 \
   --namespace cert-manager \
   --create-namespace \
   --set crds.enabled=true
