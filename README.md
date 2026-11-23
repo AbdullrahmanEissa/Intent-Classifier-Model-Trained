@@ -61,15 +61,13 @@ helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
 
 ### Step 3: Install KServe (`RawDeployment` Mode)
 ```bash
-KSERVE_VERSION=v0.14.1
-
 helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd \
-  --version \$KSERVE_VERSION \
+  --version v0.16.0 \
   --namespace kserve \
   --create-namespace
 
 helm install kserve oci://ghcr.io/kserve/charts/kserve \
-  --version \$KSERVE_VERSION \
+  --version v0.16.0 \
   --namespace kserve \
   --set kserve.controller.deploymentMode=RawDeployment
 ```
